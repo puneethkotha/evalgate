@@ -1,0 +1,192 @@
+{
+  "date": "2026-08-18",
+  "agent": "nl\u2192dag parser (llama-3.3-70b)",
+  "run": 248,
+  "min_kappa": 0.7,
+  "gate": {
+    "passed": true,
+    "reasons": [],
+    "pass_rate": {
+      "point": 0.95,
+      "lower": 0.910421851862234,
+      "upper": 0.9726173543989063,
+      "method": "wilson",
+      "confidence": 0.95,
+      "passed": 190,
+      "n": 200,
+      "corrected": null
+    },
+    "min_pass_rate": 0.9,
+    "calibration": {
+      "kappa": 0.8333333333333334,
+      "ac1": 0.8333333333333333,
+      "raw_agreement": 0.9166666666666666,
+      "tpr": 0.9166666666666666,
+      "tnr": 0.9166666666666666,
+      "fpr": 0.08333333333333333,
+      "prevalence": 0.5,
+      "band": "almost perfect",
+      "paradox_flag": false,
+      "n": 24,
+      "min_kappa": 0.7,
+      "drifted": false
+    },
+    "delta": {
+      "b": 0,
+      "c": 3,
+      "p_value": 0.125,
+      "verdict": "inconclusive"
+    },
+    "by_evaluator": [
+      {
+        "evaluator": "edges_resolve",
+        "passed": 197,
+        "total": 200
+      },
+      {
+        "evaluator": "is_a_dag",
+        "passed": 193,
+        "total": 200
+      },
+      {
+        "evaluator": "legal_node_types",
+        "passed": 197,
+        "total": 200
+      }
+    ]
+  },
+  "taxonomy": [
+    {
+      "label": "webhook, push, endpoint, pull",
+      "size": 3,
+      "exemplars": [
+        "Pull events and push them to a webhook endpoint.\n{\"nodes\": [{\"id\": \"s\", \"type\": \"source\"}, {\"id\": \"w\", \"type\": \"webhook\"}], \"edges\": [{\"from\": \"s\", \"to\": \"w\"}]}",
+        "Pull events and push them to a webhook endpoint.\n{\"nodes\": [{\"id\": \"s\", \"type\": \"source\"}, {\"id\": \"w\", \"type\": \"webhook\"}], \"edges\": [{\"from\": \"s\", \"to\": \"w\"}]}",
+        "Pull signups and push them to a webhook endpoint.\n{\"nodes\": [{\"id\": \"s\", \"type\": \"source\"}, {\"id\": \"w\", \"type\": \"webhook\"}], \"edges\": [{\"from\": \"s\", \"to\": \"w\"}]}"
+      ],
+      "terms": [
+        "webhook",
+        "push",
+        "endpoint",
+        "pull"
+      ]
+    },
+    {
+      "label": "transform, wire, read, ghost",
+      "size": 3,
+      "exemplars": [
+        "Read transactions, transform, and load \u2014 but wire the last step to a missing node.\n{\"nodes\": [{\"id\": \"a\", \"type\": \"source\"}, {\"id\": \"b\", \"type\": \"transform\"}], \"edges\": [{\"from\": \"a\", \"to\": \"b\"}, {\"from\": \"b\", \"to\": \"ghost\"}]}",
+        "Read tickets, transform, and load \u2014 but wire the last step to a missing node.\n{\"nodes\": [{\"id\": \"a\", \"type\": \"source\"}, {\"id\": \"b\", \"type\": \"transform\"}], \"edges\": [{\"from\": \"a\", \"to\": \"b\"}, {\"from\": \"b\", \"to\": \"ghost\"}]}",
+        "Read users, transform, and load \u2014 but wire the last step to a missing node.\n{\"nodes\": [{\"id\": \"a\", \"type\": \"source\"}, {\"id\": \"b\", \"type\": \"transform\"}], \"edges\": [{\"from\": \"a\", \"to\": \"b\"}, {\"from\": \"b\", \"to\": \"ghost\"}]}"
+      ],
+      "terms": [
+        "transform",
+        "wire",
+        "read",
+        "ghost"
+      ]
+    },
+    {
+      "label": "orders, join, type, id",
+      "size": 2,
+      "exemplars": [
+        "Join orders and refunds, then feed the result back into orders.\n{\"nodes\": [{\"id\": \"x\", \"type\": \"join\"}, {\"id\": \"y\", \"type\": \"transform\"}], \"edges\": [{\"from\": \"x\", \"to\": \"y\"}, {\"from\": \"y\", \"to\": \"x\"}]}",
+        "Join orders and refunds, then feed the result back into orders.\n{\"nodes\": [{\"id\": \"x\", \"type\": \"join\"}, {\"id\": \"y\", \"type\": \"transform\"}], \"edges\": [{\"from\": \"x\", \"to\": \"y\"}, {\"from\": \"y\", \"to\": \"x\"}]}"
+      ],
+      "terms": [
+        "orders",
+        "join",
+        "type",
+        "id"
+      ]
+    },
+    {
+      "label": "join, transactions, signups, type",
+      "size": 2,
+      "exemplars": [
+        "Join signups and refunds, then feed the result back into signups.\n{\"nodes\": [{\"id\": \"x\", \"type\": \"join\"}, {\"id\": \"y\", \"type\": \"transform\"}], \"edges\": [{\"from\": \"x\", \"to\": \"y\"}, {\"from\": \"y\", \"to\": \"x\"}]}",
+        "Join transactions and refunds, then feed the result back into transactions.\n{\"nodes\": [{\"id\": \"x\", \"type\": \"join\"}, {\"id\": \"y\", \"type\": \"transform\"}], \"edges\": [{\"from\": \"x\", \"to\": \"y\"}, {\"from\": \"y\", \"to\": \"x\"}]}"
+      ],
+      "terms": [
+        "join",
+        "transactions",
+        "signups",
+        "type"
+      ]
+    }
+  ],
+  "history": [
+    {
+      "run": 237,
+      "pass_rate": 0.93,
+      "kappa": 0.82,
+      "drifted": false
+    },
+    {
+      "run": 238,
+      "pass_rate": 0.94,
+      "kappa": 0.8,
+      "drifted": false
+    },
+    {
+      "run": 239,
+      "pass_rate": 0.92,
+      "kappa": 0.83,
+      "drifted": false
+    },
+    {
+      "run": 240,
+      "pass_rate": 0.95,
+      "kappa": 0.79,
+      "drifted": false
+    },
+    {
+      "run": 241,
+      "pass_rate": 0.94,
+      "kappa": 0.81,
+      "drifted": false
+    },
+    {
+      "run": 242,
+      "pass_rate": 0.93,
+      "kappa": 0.84,
+      "drifted": false
+    },
+    {
+      "run": 243,
+      "pass_rate": 0.94,
+      "kappa": 0.55,
+      "drifted": true
+    },
+    {
+      "run": 244,
+      "pass_rate": 0.95,
+      "kappa": 0.58,
+      "drifted": true
+    },
+    {
+      "run": 245,
+      "pass_rate": 0.94,
+      "kappa": 0.8,
+      "drifted": false
+    },
+    {
+      "run": 246,
+      "pass_rate": 0.95,
+      "kappa": 0.82,
+      "drifted": false
+    },
+    {
+      "run": 247,
+      "pass_rate": 0.95,
+      "kappa": 0.83,
+      "drifted": false
+    },
+    {
+      "run": 248,
+      "pass_rate": 0.95,
+      "kappa": 0.833,
+      "drifted": false
+    }
+  ]
+}

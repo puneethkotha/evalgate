@@ -182,6 +182,19 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     return 1 if report.drifted else 0
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    from .report import build_dashboard_report
+
+    payload = build_dashboard_report(seed=args.seed, min_kappa=args.min_kappa)
+    out = json.dumps(payload, indent=2)
+    if args.out:
+        Path(args.out).write_text(out, encoding="utf-8")
+        print(f"wrote dashboard report -> {args.out}")
+    else:
+        print(out)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="evalgate", description=(
         "A CI gate for LLM agents: error-analysis-first evals, a calibrated judge, and a "
@@ -220,6 +233,12 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--min-kappa", type=float, default=0.7)
     c.add_argument("--json", action="store_true")
     c.set_defaults(func=cmd_calibrate)
+
+    r = sub.add_parser("report", help="build the dashboard report.json payload")
+    r.add_argument("--out", help="write JSON here (default: stdout)")
+    r.add_argument("--seed", type=int, default=0)
+    r.add_argument("--min-kappa", type=float, default=0.7)
+    r.set_defaults(func=cmd_report)
     return p
 
 
