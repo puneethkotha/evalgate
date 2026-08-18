@@ -222,3 +222,58 @@ def demo_judge_labels(anchors: list[AnchorExample], flips_per_class: int = 1,
         for idx in rng.sample(pool, min(flips_per_class, len(pool))):
             labels[idx] = not labels[idx]
     return labels
+
+
+def run_demo(n: int = 200, n_fail: int = 10, seed: int = 0, settings=None):
+    """Run the whole EvalGate pipeline over the reference corpus and return (taxonomy, report).
+
+    Shared by ``evalgate demo`` and ``examples/eval_flint_parser.py`` so there is one code path.
+    Uses a real :class:`~evalgate.evaluators.LLMJudge` when ``GROQ_API_KEY`` is set, else the
+    deterministic offline stand-in.
+    """
+    from .analysis import build_taxonomy
+    from .calibration import calibrate
+    from .config import get_settings
+    from .gate import _evaluator_stats, evaluate_gate
+
+    settings = settings or get_settings()
+    traces = generate_flint_traces(n=n, n_fail=n_fail, seed=seed)
+
+    results: list[EvalResult] = []
+    passes: list[bool] = []
+    for t in traces:
+        rs = dag_code_checks(t)
+        results.extend(rs)
+        passes.append(all(r.passed for r in rs))
+
+    failing = [t for t in traces if not trace_passes(t)]
+    taxonomy = build_taxonomy([t.text() for t in failing], seed=seed)
+
+    anchors = generate_anchor_set(n=24, seed=1)
+    human_labels = [a.human_label for a in anchors]
+    if settings.groq_api_key:
+        from .evaluators import LLMJudge
+
+        judge = LLMJudge(settings=settings)
+        judge_labels = [judge.judge(a.input, a.output, FLINT_RUBRIC).passed for a in anchors]
+    else:
+        judge_labels = demo_judge_labels(anchors)
+    calibration = calibrate(judge_labels, human_labels, min_kappa=settings.min_judge_kappa)
+
+    # A prior agent version: three traces this version fixed (for a paired McNemar delta).
+    baseline_passes = list(passes)
+    fixed = 0
+    for i, ok in enumerate(passes):
+        if ok and fixed < 3:
+            baseline_passes[i] = False
+            fixed += 1
+
+    report = evaluate_gate(
+        passes,
+        min_pass_rate=settings.min_pass_rate,
+        calibration=calibration,
+        baseline_passes=baseline_passes,
+        by_evaluator=_evaluator_stats(results),
+        confidence=0.95,
+    )
+    return taxonomy, report

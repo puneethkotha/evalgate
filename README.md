@@ -71,31 +71,53 @@ flowchart LR
 
 ```bash
 pip install -e ".[dev]"      # or: make install
-cp .env.example .env         # add a free Groq key for the judge (optional to start)
-python -m examples.eval_flint_parser
+evalgate demo                # runs the whole pipeline offline — no key, no data needed
 ```
 
-The reference integration points EvalGate at an NL→DAG parser and runs the whole pipeline —
-code checks, the calibrated judge, and the gate — end to end:
+`evalgate demo` points EvalGate at a reference NL→DAG parser and runs the whole pipeline —
+error analysis → code checks → judge calibration → gate — end to end:
 
 ```text
-┌──────────────────────────────────────────────────────────────┐
-│ EVALGATE                                                       │
-├──────────────────────────────────────────────────────────────┤
-│ result       : PASS  (exit 0)                                  │
-│ pass-rate    : 0.940  95% CI [0.902, 0.970]  (wilson, 47/50)   │
-│ min pass-rate: 0.900                                           │
-│ judge kappa  : 0.810 (substantial)  min 0.70  drifted=False    │
-│ judge agree  : AC1 0.830  raw 0.900  TPR 0.920  TNR 0.880      │
-│ vs baseline  : +2 fixed / -0 regressed  (inconclusive)         │
-├──────────────────────────────────────────────────────────────┤
-│ RESULT: PASS                                                   │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ EVALGATE                                                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ result       : PASS  (exit 0)                                               │
+│ pass-rate    : 0.950  95% CI [0.910, 0.973]  (wilson, 190/200)              │
+│ min pass-rate: 0.900                                                        │
+│ judge kappa  : 0.833 (almost perfect)  min 0.70  drifted=False              │
+│ judge agree  : AC1 0.833  raw 0.917  TPR 0.917  TNR 0.917  prevalence 0.500 │
+│ vs baseline  : +3 fixed / -0 regressed  (inconclusive, McNemar p=0.125)     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ RESULT: PASS                                                                │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-The gate exits non-zero when the pass-rate CI lower bound drops below `min_pass_rate`, when a
+Point it at your own agent — a JSONL of `{"input", "output", "status"}` (or OTel GenAI spans via
+`evalgate.otel`) plus a human anchor set for judge calibration:
+
+```bash
+evalgate gate --traces traces.jsonl --anchors anchors.jsonl \
+  --min-pass-rate 0.9 --min-kappa 0.7 --badge badge.json
+```
+
+### In CI (GitHub Action)
+
+```yaml
+- uses: puneethkotha/evalgate@main
+  with:
+    traces: traces.jsonl
+    anchors: anchors.jsonl
+    min-pass-rate: "0.9"
+    min-kappa: "0.7"
+```
+
+It runs the gate, posts the readout as a sticky PR comment, and fails the check when the gate
+fails. Prefer pytest? `from evalgate.pytest_plugin import assert_gate` drops the gate into your
+existing suite.
+
+The gate exits non-zero when the pass-rate CI lower bound drops below `min-pass-rate`, when a
 McNemar test says the change is a significant regression, **or** when the judge's κ drops below
-`min_judge_kappa`. Drop it into any CI job.
+`min-kappa`.
 
 ## How the gate decides
 
@@ -116,6 +138,9 @@ McNemar test says the change is a significant regression, **or** when the judge'
   degenerate-case and prevalence-paradox handling, plus a bias-corrected pass-rate.
 - **`evalgate.stats`** — Wilson score interval, McNemar's exact paired test, Landis–Koch bands.
 - **`evalgate.gate`** — composes the above into one structured `GateReport` and a shell exit code.
+- **`evalgate.cli`** — the `evalgate` command: `demo`, `gate`, `analyze`, `calibrate`, `--json`,
+  and a Shields badge writer.
+- **`evalgate.otel`** — a version-tolerant OpenTelemetry-GenAI span → trace adapter.
 
 ## Privacy & cost
 
@@ -126,9 +151,9 @@ tier by default; bring your own key). Your prompts, traces, anchors, and thresho
 
 ## Status
 
-The evaluation core (analysis, evaluators, calibration, statistics, gate) is implemented and
-tested. In active development: the `evalgate` CLI, a pytest plugin, a base-vs-PR GitHub Action
-that comments on the PR, the OTel-GenAI ingestion adapter, and the instrument-panel dashboard.
+Shipped and tested: the evaluation core (analysis, evaluators, calibration, statistics, gate),
+the `evalgate` CLI, the pytest plugin, the base-vs-PR GitHub Action, and the OTel-GenAI ingestion
+adapter. In active development: the instrument-panel web dashboard.
 
 ## Reference integration
 
