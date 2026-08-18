@@ -10,6 +10,8 @@
   --sans: 'Space Grotesk', system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+.card, .verdict { scroll-margin-top: 72px; }
 html, body {
   margin: 0; background: var(--bg-app); color: var(--hi); font-family: var(--sans);
   -webkit-font-smoothing: antialiased; font-feature-settings: "tnum" 1;

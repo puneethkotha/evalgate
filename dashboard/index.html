@@ -13,7 +13,12 @@
 <header>
   <span class="wm">EVAL<b>GATE</b></span>
   <span class="src"><span class="dot"></span><span id="agent">loading…</span></span>
-  <nav><a class="active">Gate</a><a>Taxonomy</a><a>Calibration</a><a>Runs</a></nav>
+  <nav>
+    <a class="active" href="#app">Gate</a>
+    <a href="#sec-calibration">Calibration</a>
+    <a href="#sec-taxonomy">Taxonomy</a>
+    <a href="#sec-runs">Runs</a>
+  </nav>
 </header>
 
 <main id="app">
@@ -30,7 +35,7 @@
   </section>
 
   <div class="row">
-    <div class="card">
+    <div class="card" id="sec-calibration">
       <h3>Judge calibration — Cohen's κ</h3>
       <div class="cap">agreement vs human anchor set · chance-corrected</div>
       <div class="reading" id="kappa-reading"></div>
@@ -53,7 +58,7 @@
       <div id="cm"></div>
       <div class="rates" id="cm-rates"></div>
     </div>
-    <div class="card">
+    <div class="card" id="sec-taxonomy">
       <h3>Failure taxonomy — clustered</h3>
       <div class="cap" id="tax-cap">error-analysis-first · KMeans over embeddings</div>
       <div class="taxlist" id="taxlist"></div>
@@ -61,9 +66,9 @@
   </div>
 
   <div class="row">
-    <div class="card full">
+    <div class="card full" id="sec-runs">
       <h3>Judge drift — Cohen's κ over runs</h3>
-      <div class="cap">the evaluator, evaluated: re-scored against the frozen anchor set every run</div>
+      <div class="cap">κ re-scored against the frozen human anchor set on every run</div>
       <div id="timeline"></div>
       <div class="legend">
         <span><span class="sw" style="background:#4FB477"></span>judge κ</span>
@@ -75,9 +80,7 @@
   </div>
 
   <div class="foot">
-    <span>$ evalgate gate --min-pass-rate 0.90 --min-kappa 0.70</span>
-    <span class="amber" id="foot-result"></span>
-    <span style="margin-left:auto">every artifact — anchors · taxonomy · judges · thresholds — lives in your repo</span>
+    <span id="foot-cmd">$ evalgate gate --min-pass-rate 0.90 --min-kappa 0.70</span>
   </div>
 </main>
 
