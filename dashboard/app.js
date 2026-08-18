@@ -118,8 +118,8 @@ function render(data) {
     `pass-rate <span class="v">${f3(pr.point)}</span> <span style="color:var(--lo)">[${f3(pr.lower)}, ${f3(pr.upper)}]</span> ≥ ${f3(g.min_pass_rate)} ${ok(pr.lower >= g.min_pass_rate)}` +
     `<span class="sep">·</span>judge κ <span class="v">${f3(cal.kappa)}</span> ≥ ${f3(cal.min_kappa)} ${ok(!cal.drifted)}` +
     `<span class="sep">·</span>drift <span class="${cal.drifted ? "bad" : "ok"}">${cal.drifted ? "detected ✕" : "none ✓"}</span>`;
-  let meta = `<b>n</b> ${pr.n} traces &nbsp;·&nbsp; <b>judge</b> llama-3.3-70b @ T=0 &nbsp;·&nbsp; ${data.date}`;
-  if (d) meta += ` &nbsp;·&nbsp; <b>Δ vs main</b> +${d.c} fixed / -${d.b} regressed (${d.verdict}, McNemar p=${f3(d.p_value)})`;
+  let meta = `<b>n</b> ${pr.n} traces · <b>judge</b> llama-3.3-70b @ T=0 · ${data.date}`;
+  if (d) meta += ` · <b>Δ vs main</b> +${d.c} fixed / -${d.b} regressed (${d.verdict}, McNemar p=${f3(d.p_value)})`;
   el("meta").innerHTML = meta;
 
   // kappa

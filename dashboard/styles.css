@@ -15,6 +15,7 @@ html { scroll-behavior: smooth; }
 html, body {
   margin: 0; background: var(--bg-app); color: var(--hi); font-family: var(--sans);
   -webkit-font-smoothing: antialiased; font-feature-settings: "tnum" 1;
+  max-width: 100%; overflow-x: hidden;
 }
 body {
   padding: 0 0 64px;
@@ -75,8 +76,10 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px; }
   border-top: 1px solid var(--hair); padding-top: 12px; }
 .meta b { color: var(--mid); font-weight: 500; }
 
-.row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
-.card { border: 1px solid var(--hair); background: var(--bg-panel); padding: 18px 20px 22px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; margin-top: 18px; }
+.card { border: 1px solid var(--hair); background: var(--bg-panel); padding: 18px 20px 22px; min-width: 0; }
+svg { max-width: 100%; height: auto; }
+.ineq, .meta { overflow-wrap: anywhere; }
 .card h3 { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .12em;
   text-transform: uppercase; color: var(--mid); margin: 0 0 4px; }
 .card .cap { font-size: 11px; color: var(--lo); font-family: var(--mono); margin-bottom: 16px; }
@@ -115,10 +118,24 @@ svg text { font-family: var(--mono); fill: var(--lo); }
 .foot .amber { color: var(--amber); }
 
 @media (max-width: 760px) {
-  header { padding: 12px 16px; gap: 12px; flex-wrap: wrap; }
-  nav { gap: 16px; }
-  main { padding: 18px 14px; }
-  .row { grid-template-columns: 1fr; }
+  header { padding: 12px 16px; gap: 8px 14px; flex-wrap: wrap; }
+  .src { font-size: 10px; }
+  nav { margin-left: 0; width: 100%; gap: 14px; flex-wrap: wrap; font-size: 11px; }
+  main { padding: 16px 14px; }
+  .row { grid-template-columns: minmax(0, 1fr); }
   .verdict { grid-template-columns: 1fr; }
-  .verdict .big { border-right: none; border-bottom: 1px solid var(--hair); }
+  .verdict .big { border-right: none; border-bottom: 1px solid var(--hair); padding: 20px 22px; }
+  .verdict .big .stamp { font-size: 38px; }
+  .verdict .body { padding: 18px 22px; }
+  .partno { display: none; }                 /* absolute tag would overflow a narrow bezel */
+  .ineq { font-size: 12px; line-height: 1.9; }
+  .ineq .sep { margin: 0 6px; }
+  .meta { font-size: 10px; }
+  .reading { font-size: 24px; }
+  table.cm { font-size: 11px; }
+  table.cm td { padding: 10px 4px; }
+  table.cm th { padding: 5px 4px; }
+  .rates { gap: 12px 16px; }
+  .taxlist .taxrow { grid-template-columns: 4ch 1fr auto; gap: 8px; font-size: 12px; }
+  .legend { gap: 12px; font-size: 10px; }
 }
