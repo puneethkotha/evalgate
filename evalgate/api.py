@@ -1,21 +1,29 @@
 """FastAPI surface for EvalGate.
 
-Endpoints are stubs (typed shapes + ``# TODO``) so the app boots and serves docs immediately,
-but doesn't pretend to do work it can't yet. ``main()`` is the ``evalgate`` console script.
+Serves the instrument-panel dashboard (static files under ``dashboard/``) and a live
+``/report.json`` endpoint that regenerates the dashboard payload on demand. The same dashboard
+deploys as a fully static site (Cloudflare Pages / GitHub Pages) by shipping a pre-built
+``dashboard/report.json`` — no backend required.
+
+``main()`` is the ``evalgate-serve`` console script.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 from . import __version__
-from .models import CalibrationReport, FailureCluster, Trace
 
 app = FastAPI(
     title="EvalGate",
     version=__version__,
-    summary="Error-analysis-first eval + observability for LLM agents, with judge drift detection.",
+    summary="Error-analysis-first eval + CI gate for LLM agents, with judge drift detection.",
 )
+
+_DASHBOARD = Path(__file__).resolve().parent.parent / "dashboard"
 
 
 @app.get("/health")
@@ -23,39 +31,24 @@ def health() -> dict[str, str]:
     return {"status": "ok", "version": __version__}
 
 
-@app.post("/traces")
-def post_traces(trace: Trace) -> dict[str, str]:
-    """Ingest a single trace (JSON body) into the store.
+@app.get("/report.json")
+def report() -> JSONResponse:
+    """Regenerate the dashboard payload live (the static deploy uses the checked-in file)."""
+    from .report import build_dashboard_report
 
-    TODO: embed + persist via evalgate.ingest.TraceStore.store(...).
-    """
-    # TODO: wire to TraceStore; embed the trace text for clustering.
-    return {"status": "accepted", "trace_id": trace.trace_id}
+    return JSONResponse(build_dashboard_report())
 
 
-@app.get("/taxonomy")
-def get_taxonomy() -> list[FailureCluster]:
-    """Return the current failure taxonomy (clustered failing traces)."""
-    # TODO: pull failure embeddings from the store and run evalgate.analysis.cluster_failures.
-    return []
+# Mount the static dashboard last so explicit routes (/health, /report.json) win. When running
+# from an installed wheel without the dashboard dir, this is simply skipped.
+if _DASHBOARD.is_dir():
+    from fastapi.staticfiles import StaticFiles
 
-
-@app.get("/report")
-def get_report() -> dict[str, object]:
-    """Return the latest eval summary (pass-rate + CI + per-check breakdown)."""
-    # TODO: run evaluators over stored traces and return evalgate.gate outputs as JSON.
-    return {"detail": "not implemented"}
-
-
-@app.get("/calibration")
-def get_calibration() -> dict[str, object] | CalibrationReport:
-    """Return the latest judge calibration report."""
-    # TODO: load anchor set, score with the judge, return evalgate.calibration.calibrate(...).
-    return {"detail": "not implemented"}
+    app.mount("/", StaticFiles(directory=str(_DASHBOARD), html=True), name="dashboard")
 
 
 def main() -> None:
-    """Console-script entrypoint: ``evalgate`` -> serve the API."""
+    """Console-script entrypoint: serve the dashboard + API on :8000."""
     import uvicorn
 
     uvicorn.run("evalgate.api:app", host="0.0.0.0", port=8000, reload=False)
