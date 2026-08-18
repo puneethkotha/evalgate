@@ -1,138 +1,141 @@
+<div align="center">
+
 # EvalGate
 
-**An error-analysis-first eval + observability harness for LLM agents — that also watches its own judge for drift.**
+**A CI gate for LLM agents — the test-suite step that blocks a bad agent version from shipping.**
 
-> The gate that blocks a bad agent version from shipping.
+Most "LLM eval" tooling is a dashboard you glance at. EvalGate is a *gate*: it starts from your
+real failures, evaluates with code checks + a calibrated LLM judge, and **fails the build** when
+agent quality regresses — or when the judge itself drifts out of agreement with humans.
 
-EvalGate ingests [OpenTelemetry GenAI](https://opentelemetry.io/docs/specs/semconv/gen-ai/) spans from a running
-agent, clusters the failing traces into a **failure taxonomy**, evaluates traces with **code-based checks + a
-binary LLM-judge (with a written critique)**, and — the part most eval tools skip — continuously checks that
-**the judge still agrees with humans** by re-scoring a human-labeled anchor set (Cohen's κ) and alerting when it
-drifts. A **CI gate** turns all of that into a single pass/fail with a bootstrap confidence interval.
+[![license](https://img.shields.io/badge/license-MIT-F5A623?labelColor=0B0D0E&style=flat)](LICENSE)
+[![python](https://img.shields.io/badge/python-3.11%2B-F5A623?labelColor=0B0D0E&style=flat)](pyproject.toml)
+[![lint](https://img.shields.io/badge/lint-ruff-F5A623?labelColor=0B0D0E&style=flat)](https://github.com/astral-sh/ruff)
+[![tests](https://img.shields.io/badge/tests-passing-4FB477?labelColor=0B0D0E&style=flat)](tests)
 
----
-
-## Why this isn't slop
-
-Most "LLM eval" tooling is *call GPT to grade GPT*: one model scores another on a 1–5 rubric, nobody checks the
-grader, and the number goes up and to the right. EvalGate is opinionated in three ways that make it actually trustworthy:
-
-1. **Error-analysis-first, not metric-first.** Before writing a single assertion you *look at your failures*.
-   EvalGate samples failing traces, embeds them, and clusters them into a taxonomy so you build evals against the
-   failure modes you actually have — not the ones you imagined. (This is the [Hamel Husain / Shreya Shankar
-   "look at your data"](https://hamel.dev/blog/posts/evals/) discipline, wired into the tool.)
-2. **The judge is calibrated, not trusted.** The LLM-judge is scored against a human-labeled **anchor set** every
-   run. We report **Cohen's κ** (agreement corrected for chance) plus true-positive / true-negative rates. If κ
-   drops below a threshold, the run is **blocked** and you're told the judge — not the agent — regressed.
-3. **Binary verdicts with written critiques.** The judge answers *pass / fail* and must justify it in prose.
-   Binary is reproducible and cheap to calibrate against humans; 1–5 scores are noise (see FAQ). The critique is
-   what makes a failure actionable and what a human anchors against.
-
-The differentiator is #2: **drift detection on the evaluator itself.** A judge that silently stops matching
-humans will happily green-light a regressing agent. EvalGate refuses to.
+</div>
 
 ---
+
+## Why
+
+> In the 2025 *State of Agent Engineering* survey, **89% of teams running agents had observability
+> — but only ~52% ran evals.** Observability tells you what happened; it doesn't stop a worse
+> version from shipping.
+
+EvalGate is the missing half: the pipeline step that turns "is this agent version good enough?"
+into a single, defensible pass/fail.
+
+It is opinionated in three ways that make the number trustworthy:
+
+1. **Error-analysis first, not metric-first.** Before you write a single assertion, you look at
+   your failures. EvalGate samples failing traces, embeds them, and clusters them into a
+   **failure taxonomy** so your evaluators target the failure modes you actually have — the
+   [Hamel Husain](https://hamel.dev/blog/posts/evals-faq/) / [Shreya
+   Shankar](https://arxiv.org/abs/2404.12272) "look at your data" discipline, wired into the tool.
+2. **The judge is calibrated, not trusted.** The LLM judge is re-scored against a frozen,
+   human-labeled **anchor set** every run. EvalGate reports **Cohen's κ** (agreement corrected
+   for chance) cross-checked against **Gwet's AC1** (to catch the prevalence paradox). If κ falls
+   below threshold, the run is blocked and flagged as *judge drift* — not agent regression.
+3. **Binary verdicts + statistics that survive tiny samples.** The judge answers pass/fail with a
+   written critique (Likert scores are noise). The gate reads the **lower bound of a Wilson score
+   interval**, and compares two agent versions with **McNemar's paired test**, so a two-sample
+   wobble can't flip the build.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    OTEL["OTel GenAI spans"] --> ING["Ingest<br/>(OTLP receiver)"]
-    ING --> STORE[("Store<br/>Postgres + pgvector")]
+    OTEL["OTel GenAI spans"] --> ING["Ingest"]
+    ING --> STORE[("Postgres + pgvector")]
 
-    STORE --> EA["ErrorAnalysis<br/>sample &rarr; embed &rarr; cluster<br/>&rarr; Taxonomy"]
+    STORE --> EA["Error analysis<br/>sample → embed → cluster<br/>→ failure taxonomy"]
     STORE --> EVAL
 
     subgraph EVAL["Evaluators"]
-        CC["CodeChecks<br/>schema / tool / PII / latency"]
-        JUDGE["LLMJudge<br/>binary + critique"]
+        CC["Code checks<br/>schema · tools · PII · latency"]
+        JUDGE["LLM judge<br/>binary + critique"]
     end
 
     EA -.informs.-> EVAL
 
-    JUDGE --> CAL["Calibration<br/>anchor set &rarr; Cohen's &kappa; &rarr; drift alert"]
+    JUDGE --> CAL["Calibration<br/>anchor set → Cohen's κ + AC1 → drift"]
     CC --> GATE
     JUDGE --> GATE
     CAL --> GATE
 
-    GATE["CI Gate<br/>pass-rate + bootstrap CI"] --> VERDICT{{"exit 0 / 1"}}
+    GATE["CI gate<br/>Wilson CI + McNemar"] --> VERDICT{{"exit 0 / 1"}}
 ```
-
----
 
 ## Quickstart
 
 ```bash
-# 1. env + deps
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"           # or: make install
-cp .env.example .env              # add GROQ_API_KEY (free tier)
-
-# 2. storage (Postgres 16 + pgvector)
-docker compose up -d              # waits for healthcheck
-
-# 3. ingest agent traces (OTLP GenAI spans) and run the gate
-make ingest                       # placeholder receiver — see evalgate/ingest.py
-make gate                         # code checks + judge + calibration -> exit code
+pip install -e ".[dev]"      # or: make install
+cp .env.example .env         # add a free Groq key for the judge (optional to start)
+python -m examples.eval_flint_parser
 ```
 
-`make gate` exits non-zero if the agent's lower-CI pass-rate falls under `MIN_PASS_RATE` **or** the judge's κ
-falls under `MIN_JUDGE_KAPPA`. Drop it straight into CI.
+The reference integration points EvalGate at an NL→DAG parser and runs the whole pipeline —
+code checks, the calibrated judge, and the gate — end to end:
 
----
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ EVALGATE                                                       │
+├──────────────────────────────────────────────────────────────┤
+│ result       : PASS  (exit 0)                                  │
+│ pass-rate    : 0.940  95% CI [0.902, 0.970]  (wilson, 47/50)   │
+│ min pass-rate: 0.900                                           │
+│ judge kappa  : 0.810 (substantial)  min 0.70  drifted=False    │
+│ judge agree  : AC1 0.830  raw 0.900  TPR 0.920  TNR 0.880      │
+│ vs baseline  : +2 fixed / -0 regressed  (inconclusive)         │
+├──────────────────────────────────────────────────────────────┤
+│ RESULT: PASS                                                   │
+└──────────────────────────────────────────────────────────────┘
+```
 
-## Interview story
+The gate exits non-zero when the pass-rate CI lower bound drops below `min_pass_rate`, when a
+McNemar test says the change is a significant regression, **or** when the judge's κ drops below
+`min_judge_kappa`. Drop it into any CI job.
 
-> "Everyone's shipping *call-GPT-to-grade-GPT* eval harnesses. The obvious hole is nobody grades the grader —
-> a judge that quietly drifts will pass a regressing agent forever. So I built the workflow the way practitioners
-> actually recommend: **error-analysis first** (cluster your real failures into a taxonomy before you write
-> assertions), then **binary code-checks + LLM-judge**, and — the differentiator — I **calibrate the judge
-> against a human-labeled anchor set on every run using Cohen's κ and block CI when it drifts**. The gate reports
-> a bootstrap confidence interval on pass-rate, so 'quality' is a defensible number, not a vibe. Storage is
-> Postgres + pgvector so clustering and retrieval live in one place, and the judge defaults to Groq's free tier
-> to keep eval cost near zero."
+## How the gate decides
 
-**Likely follow-ups:**
+| Signal | Fails the build when… | Why |
+|---|---|---|
+| **Pass-rate** | Wilson 95% CI *lower bound* < `min_pass_rate` | A lucky small sample can't sneak past the gate |
+| **Version delta** | McNemar paired test flags a significant regression vs baseline | The two runs are paired (same inputs) — compare correctly |
+| **Judge drift** | Cohen's κ vs the human anchor set < `min_judge_kappa` | A judge that no longer matches humans can't be trusted to grade |
 
-- **"How do you know your judge is any good?"** — I don't assume it is. Each run re-scores a frozen, human-labeled
-  anchor set and reports Cohen's κ (agreement corrected for chance) plus TPR/TNR. κ ≥ threshold → I trust this
-  run's judgments; κ below → the run is blocked and flagged as *judge drift*, not agent regression. The anchor
-  set is versioned so calibration is reproducible.
-- **"Why binary, not 1–5?"** — Ordinal judge scores are notoriously unreliable: models cluster on 3–4, aren't
-  consistent across runs, and are hard to calibrate against humans. Binary *pass/fail* is reproducible, maps
-  cleanly to a confusion matrix (so κ/TPR/TNR are meaningful), and forces the rubric to be explicit. The nuance
-  lives in the **written critique**, not in a fake-precise number.
-- **"Error-analysis-first vs eval-driven?"** — Eval-driven development writes assertions up front and risks
-  measuring what's easy instead of what's broken. Error-analysis-first says: sample real failures, read them,
-  cluster them into a taxonomy, *then* codify each recurring failure mode as a check. You end up with evals that
-  cover your actual failure distribution — and the taxonomy doubles as a living bug backlog.
+## What's inside
 
----
+- **`evalgate.analysis`** — error-analysis workbench: sample failing traces → embed
+  (a $0, offline TF-IDF encoder by default) → cluster into an auto-labeled failure taxonomy.
+- **`evalgate.evaluators`** — deterministic code checks (schema / tool success / PII / latency)
+  and a binary LLM judge (chain-of-thought → verdict → critique) with length/position/self-
+  preference bias mitigation and an order-swapped pairwise mode.
+- **`evalgate.calibration`** — Cohen's κ + Gwet's AC1 + TPR/TNR against the anchor set, with
+  degenerate-case and prevalence-paradox handling, plus a bias-corrected pass-rate.
+- **`evalgate.stats`** — Wilson score interval, McNemar's exact paired test, Landis–Koch bands.
+- **`evalgate.gate`** — composes the above into one structured `GateReport` and a shell exit code.
 
-## Roadmap
+## Privacy & cost
 
-**MVP (this scaffold)**
-- [x] Pydantic domain models (OTel GenAI-shaped)
-- [x] Failure clustering (KMeans) → taxonomy
-- [x] CodeChecks (schema / tool-success / PII / latency)
-- [x] Binary LLM-judge with critique (Groq OpenAI-compatible)
-- [x] **Calibration: anchor set → Cohen's κ → drift alert**
-- [x] **CI gate with bootstrap CI**
-- [ ] Real OTLP receiver wiring + pgvector persistence
-- [ ] Pluggable embedding encoder
+EvalGate runs locally and is **$0 to operate**: the default embedding encoder needs no model
+download and no network, and the LLM judge uses any OpenAI-compatible endpoint (the Groq free
+tier by default; bring your own key). Your prompts, traces, anchors, and thresholds are files in
+**your** repo — nothing is sent anywhere except the judge model you configure.
 
-**Stretch**
-- [ ] Web UI for the error-analysis workbench (label failures, edit taxonomy, grow the anchor set)
-- [ ] Active-learning loop: judge-vs-human disagreements auto-queued for human labeling
-- [ ] Multi-judge ensembles + inter-judge agreement
-- [ ] Per-failure-mode pass-rate trends over time
-- [ ] Trace replay / regression diffing between agent versions
+## Status
 
----
+The evaluation core (analysis, evaluators, calibration, statistics, gate) is implemented and
+tested. In active development: the `evalgate` CLI, a pytest plugin, a base-vs-PR GitHub Action
+that comments on the PR, the OTel-GenAI ingestion adapter, and the instrument-panel dashboard.
 
 ## Reference integration
 
-The first target is the sibling project **Flint**, a natural-language → DAG parser. See
-[`examples/eval_flint_parser.py`](examples/eval_flint_parser.py): it defines expected-DAG code checks
-(*is-a-DAG*, *legal node types*, *edges resolve*), loads sample traces, runs CodeChecks + LLMJudge, and finishes
-on the CI gate — the whole pipeline end to end.
+[`examples/eval_flint_parser.py`](examples/eval_flint_parser.py) evaluates an NL→DAG parser:
+code checks are *is-a-DAG* (Kahn's algorithm), legal node types, and edges-resolve; the judge
+checks that the plan faithfully represents the request (no missing or hallucinated steps).
+
+## License
+
+[MIT](LICENSE)
