@@ -8,12 +8,26 @@ Most "LLM eval" tooling is a dashboard you glance at. EvalGate is a *gate*: it s
 real failures, evaluates with code checks + a calibrated LLM judge, and **fails the build** when
 agent quality regresses — or when the judge itself drifts out of agreement with humans.
 
+[![CI](https://github.com/puneethkotha/evalgate/actions/workflows/ci.yml/badge.svg)](https://github.com/puneethkotha/evalgate/actions/workflows/ci.yml)
+[![live demo](https://img.shields.io/badge/demo-evalgate.pages.dev-F5A623?labelColor=0B0D0E&style=flat)](https://evalgate.pages.dev)
 [![license](https://img.shields.io/badge/license-MIT-F5A623?labelColor=0B0D0E&style=flat)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.11%2B-F5A623?labelColor=0B0D0E&style=flat)](pyproject.toml)
 [![lint](https://img.shields.io/badge/lint-ruff-F5A623?labelColor=0B0D0E&style=flat)](https://github.com/astral-sh/ruff)
-[![tests](https://img.shields.io/badge/tests-passing-4FB477?labelColor=0B0D0E&style=flat)](tests)
+
+[**Live dashboard →**](https://evalgate.pages.dev)
 
 </div>
+
+---
+
+## Dashboard
+
+An instrument-panel dashboard renders the whole gate — verdict, judge calibration (κ caliper),
+pass-rate interval, the judge-vs-human confusion matrix, the failure taxonomy, and a
+**judge-drift-over-runs timeline** (the evaluator, evaluated). Live at
+**[evalgate.pages.dev](https://evalgate.pages.dev)**.
+
+![EvalGate dashboard](assets/dashboard.png)
 
 ---
 
@@ -160,6 +174,12 @@ adapter. In active development: the instrument-panel web dashboard.
 [`examples/eval_flint_parser.py`](examples/eval_flint_parser.py) evaluates an NL→DAG parser:
 code checks are *is-a-DAG* (Kahn's algorithm), legal node types, and edges-resolve; the judge
 checks that the plan faithfully represents the request (no missing or hallucinated steps).
+
+## Contributing
+
+`pip install -e ".[dev]"`, then `python -m pytest` and `ruff check evalgate tests examples`.
+[`ARCHITECTURE.md`](ARCHITECTURE.md) is the bird's-eye map — codemap + the invariants that keep
+the gate honest.
 
 ## License
 
