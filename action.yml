@@ -1,0 +1,90 @@
+name: "EvalGate"
+description: "Gate a pull request on LLM-agent quality: pass-rate CI + judge calibration/drift."
+branding:
+  icon: "check-circle"
+  color: "orange"
+
+inputs:
+  traces:
+    description: "Path to a JSONL file of agent traces to evaluate."
+    required: true
+  anchors:
+    description: "Path to a JSONL human anchor set for judge calibration."
+    required: false
+    default: ""
+  baseline:
+    description: "Path to a prior version's traces (paired McNemar comparison)."
+    required: false
+    default: ""
+  eval:
+    description: "Per-trace pass signal: auto | judge | status."
+    required: false
+    default: "auto"
+  rubric:
+    description: "Judge rubric (used when eval=judge)."
+    required: false
+    default: "The output correctly and faithfully answers the input."
+  min-pass-rate:
+    description: "Minimum pass-rate (gate reads the CI lower bound)."
+    required: false
+    default: "0.9"
+  min-kappa:
+    description: "Minimum judge-vs-human Cohen's kappa before drift blocks the run."
+    required: false
+    default: "0.7"
+  comment:
+    description: "Post the gate readout as a sticky PR comment."
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install EvalGate
+      shell: bash
+      run: pip install "${{ github.action_path }}"
+
+    - name: Run the gate
+      id: gate
+      shell: bash
+      run: |
+        set +e
+        args=(--traces "${{ inputs.traces }}" --eval "${{ inputs.eval }}" \
+              --rubric "${{ inputs.rubric }}" \
+              --min-pass-rate "${{ inputs.min-pass-rate }}" \
+              --min-kappa "${{ inputs.min-kappa }}")
+        [ -n "${{ inputs.anchors }}" ] && args+=(--anchors "${{ inputs.anchors }}")
+        [ -n "${{ inputs.baseline }}" ] && args+=(--baseline "${{ inputs.baseline }}")
+        evalgate gate "${args[@]}" | tee evalgate-report.txt
+        echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+    - name: Comment on the PR
+      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' && always() }}
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const marker = '<!-- evalgate -->';
+          const body = marker + '\n```\n' + fs.readFileSync('evalgate-report.txt', 'utf8') + '\n```';
+          const {owner, repo} = context.repo;
+          const issue_number = context.issue.number;
+          const {data: comments} = await github.rest.issues.listComments({owner, repo, issue_number});
+          const existing = comments.find(c => c.body && c.body.includes(marker));
+          if (existing) {
+            await github.rest.issues.updateComment({owner, repo, comment_id: existing.id, body});
+          } else {
+            await github.rest.issues.createComment({owner, repo, issue_number, body});
+          }
+
+    - name: Enforce the gate
+      shell: bash
+      run: |
+        if [ "${{ steps.gate.outputs.code }}" != "0" ]; then
+          echo "::error::EvalGate blocked this change."
+          exit 1
+        fi

@@ -33,7 +33,10 @@ dev = [
 ]
 
 [project.scripts]
-evalgate = "evalgate.api:main"
+evalgate = "evalgate.cli:main"
+
+[project.entry-points.pytest11]
+evalgate = "evalgate.pytest_plugin"
 
 [tool.setuptools.packages.find]
 include = ["evalgate*"]
