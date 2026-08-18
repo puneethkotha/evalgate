@@ -83,12 +83,25 @@ class AnchorExample(BaseModel):
 
 
 class CalibrationReport(BaseModel):
-    """Judge-vs-human agreement on the anchor set for a single run."""
+    """Judge-vs-human agreement on the anchor set for a single run.
+
+    We report a *bundle* of agreement statistics, not one number, because any single
+    coefficient can mislead: Cohen's kappa collapses under class imbalance (the prevalence
+    paradox), while raw agreement ignores chance. Gwet's AC1 is prevalence-robust, so a large
+    gap between kappa and AC1 flags an imbalanced anchor set (``paradox_flag``).
+    """
 
     kappa: float  # Cohen's kappa (chance-corrected agreement); NaN if degenerate
+    ac1: float  # Gwet's AC1 (prevalence-robust agreement)
+    raw_agreement: float  # uncorrected fraction of matching labels
     tpr: float  # true-positive rate  (sensitivity)
     tnr: float  # true-negative rate  (specificity)
+    fpr: float  # false-positive rate (1 - tnr); used for bias-correcting the pass-rate
+    prevalence: float  # fraction of human "pass" labels in the anchor set
+    band: str  # Landis-Koch qualitative band for kappa
+    paradox_flag: bool  # kappa and AC1 diverge => anchor set likely imbalanced
     n: int
+    min_kappa: float  # threshold this report was judged against
     drifted: bool  # True => judge no longer trusted; block the run
 
 
@@ -98,3 +111,51 @@ class FailureCluster(BaseModel):
     label: str
     size: int
     exemplars: list[str] = Field(default_factory=list)
+    terms: list[str] = Field(default_factory=list)  # top distinctive terms (auto-label)
+
+
+class EvaluatorStat(BaseModel):
+    """Per-evaluator pass breakdown, for the gate report + dashboard."""
+
+    evaluator: str
+    passed: int
+    total: int
+
+    @property
+    def pass_rate(self) -> float:
+        return self.passed / self.total if self.total else float("nan")
+
+
+class PassRateReport(BaseModel):
+    """Pass-rate point estimate with a confidence interval."""
+
+    point: float
+    lower: float
+    upper: float
+    method: str  # "wilson" | "bootstrap"
+    confidence: float
+    passed: int
+    n: int
+    corrected: float | None = None  # bias-corrected using judge FPR/TPR, when available
+
+
+class VersionDelta(BaseModel):
+    """Paired v1-vs-v2 comparison (McNemar) on the same eval set."""
+
+    b: int  # regressions: v1 passed, v2 failed
+    c: int  # fixes: v1 failed, v2 passed
+    p_value: float
+    verdict: str  # "improved" | "regressed" | "inconclusive"
+
+
+class GateReport(BaseModel):
+    """The full, structured outcome of a gate run — the one contract the CLI, API,
+    dashboard, and GitHub Action all render from."""
+
+    passed: bool
+    reasons: list[str] = Field(default_factory=list)
+    pass_rate: PassRateReport
+    min_pass_rate: float
+    calibration: CalibrationReport | None = None
+    delta: VersionDelta | None = None
+    by_evaluator: list[EvaluatorStat] = Field(default_factory=list)

@@ -3,18 +3,22 @@
 Design stance:
   * **Code checks first.** They are cheap, deterministic, and don't need calibration. Reach for
     the judge only for things code can't express (helpfulness, faithfulness, tone).
-  * **Binary judge.** The judge returns pass/fail + prose, never a 1-5 score (see README FAQ).
-  * **Bias mitigation.** LLM judges have known biases — verbosity (longer answers score higher),
-    position (order effects in pairwise setups), and self-preference (favouring same-family
-    outputs). Mitigations wired into the prompt/usage here: judge on an absolute rubric (not
-    pairwise), explicitly instruct to ignore length/style and grade only the rubric, and — the
-    real safety net — calibrate against a human anchor set every run (see evalgate.calibration).
+  * **Binary judge, chain-of-thought first.** The judge reasons, then commits to pass/fail +
+    prose — never a 1-5 score (see README FAQ). Temperature 0 and JSON output make it
+    reproducible; the critique is what makes a failure actionable and what a human anchors to.
+  * **Bias mitigation.** LLM judges have known biases — verbosity (longer answers score higher,
+    ~15-30pt), position (order effects in pairwise setups, ~10-15pt), and self-preference
+    (favouring same-family outputs, ~10-25%). Mitigations wired in here: judge on an absolute
+    rubric (not pairwise) for scoring; instruct to ignore length/style; for pairwise comparison
+    run **both orders and call it a tie on disagreement**; and — the real safety net —
+    calibrate against a human anchor set every run (see :mod:`evalgate.calibration`).
 """
 
 from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any, Protocol, runtime_checkable
 
 from .config import Settings, get_settings
@@ -92,20 +96,30 @@ class CodeChecks:
 
 
 # --------------------------------------------------------------------------------------
-# LLM judge — prompt + parsing fully implemented; network isolated behind ``_chat``.
+# LLM judge — prompts + parsing fully implemented; network isolated behind ``_chat``.
 # --------------------------------------------------------------------------------------
 
 _JUDGE_SYSTEM = (
     "You are a strict, impartial evaluator of an AI agent's output. "
     "Decide whether the OUTPUT satisfies the RUBRIC for the given INPUT.\n\n"
     "Rules:\n"
-    "1. Answer with a BINARY verdict only: pass or fail. Do NOT use a 1-5 or numeric score.\n"
+    "1. First reason briefly, THEN commit to a BINARY verdict: \"pass\" or \"fail\". "
+    "Do NOT use a 1-5 or numeric score.\n"
     "2. Grade ONLY against the rubric. Ignore answer length, verbosity, and writing style — "
     "a longer answer is not a better answer.\n"
     "3. Do not favour any particular model or phrasing; judge substance, not surface form.\n"
-    "4. Provide a concise written critique (1-3 sentences) justifying the verdict, citing the "
-    "specific rubric criterion that was met or violated.\n\n"
-    'Respond with EXACTLY one JSON object: {"pass": <true|false>, "critique": "<text>"}'
+    "4. The critique must be 1-3 sentences citing the specific rubric criterion met or "
+    "violated.\n\n"
+    "Respond with EXACTLY one JSON object and nothing else:\n"
+    '{"reasoning": "<brief chain of thought>", "verdict": "pass" | "fail", '
+    '"critique": "<text>"}'
+)
+
+_PAIRWISE_SYSTEM = (
+    "You are comparing two candidate OUTPUTS (A and B) for the same INPUT against a RUBRIC. "
+    "Decide which better satisfies the rubric. Ignore length, verbosity, style, and the order "
+    "in which A and B are presented; judge substance only.\n\n"
+    'Respond with EXACTLY one JSON object: {"reasoning": "<brief>", "winner": "A" | "B" | "tie"}'
 )
 
 
@@ -114,9 +128,12 @@ class LLMJudge:
 
     name = "llm_judge"
 
-    def __init__(self, settings: Settings | None = None, client: Any | None = None) -> None:
+    def __init__(self, settings: Settings | None = None, client: Any | None = None,
+                 max_retries: int = 3, timeout: float = 30.0) -> None:
         self.settings = settings or get_settings()
         self._client = client  # inject a client in tests; built lazily otherwise
+        self.max_retries = max_retries
+        self.timeout = timeout
 
     def _get_client(self) -> Any:
         if self._client is None:
@@ -126,21 +143,40 @@ class LLMJudge:
             self._client = OpenAI(
                 api_key=self.settings.groq_api_key,
                 base_url=self.settings.groq_base_url,
+                timeout=self.timeout,
             )
         return self._client
 
     def _chat(self, messages: list[dict[str, str]]) -> str:
-        """Single network hop to the judge model. Everything network lives here.
+        """Single logical call to the judge model, with retry/backoff. All network lives here.
 
-        TODO: add timeout, retry/backoff, and structured-output / JSON-mode enforcement.
+        Requests JSON output (OpenAI-compatible ``response_format``); silently retries without
+        it if the endpoint rejects the parameter, so the judge works across providers.
         """
         client = self._get_client()
-        resp = client.chat.completions.create(
-            model=self.settings.judge_model,
-            messages=messages,
-            temperature=0.0,  # deterministic judgments
-        )
-        return resp.choices[0].message.content or ""
+        last_exc: Exception | None = None
+        for attempt in range(self.max_retries):
+            try:
+                try:
+                    resp = client.chat.completions.create(
+                        model=self.settings.judge_model,
+                        messages=messages,
+                        temperature=0.0,  # deterministic judgments
+                        response_format={"type": "json_object"},
+                    )
+                except TypeError:
+                    # Injected/older client without response_format support.
+                    resp = client.chat.completions.create(
+                        model=self.settings.judge_model,
+                        messages=messages,
+                        temperature=0.0,
+                    )
+                return resp.choices[0].message.content or ""
+            except Exception as exc:  # noqa: BLE001 - broad by design; retry any transient error
+                last_exc = exc
+                if attempt < self.max_retries - 1:
+                    time.sleep(0.5 * (2**attempt))  # 0.5s, 1s, 2s exponential backoff
+        raise RuntimeError(f"judge call failed after {self.max_retries} attempts: {last_exc}")
 
     def _build_messages(
         self, input_text: str, output_text: str, rubric: str
@@ -157,35 +193,81 @@ class LLMJudge:
         ]
 
     @staticmethod
-    def _parse(raw: str) -> JudgeResult:
-        """Parse the judge's reply into a strict binary JudgeResult.
-
-        Tolerant of code fences / stray prose: extracts the first JSON object, else falls back
-        to keyword sniffing. Ambiguous replies fail closed (passed=False) with a note.
-        """
+    def _extract_json(raw: str) -> dict[str, Any] | None:
         text = raw.strip()
         match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            try:
-                data = json.loads(match.group(0))
-                passed = bool(data["pass"])
-                critique = str(data.get("critique", "")).strip()
-                return JudgeResult(passed=passed, critique=critique)
-            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-                pass
+        if not match:
+            return None
+        try:
+            data = json.loads(match.group(0))
+            return data if isinstance(data, dict) else None
+        except (json.JSONDecodeError, ValueError):
+            return None
+
+    @classmethod
+    def _parse(cls, raw: str) -> JudgeResult:
+        """Parse the judge's reply into a strict binary JudgeResult.
+
+        Accepts the current ``{reasoning, verdict, critique}`` shape and the legacy
+        ``{pass, critique}`` shape. Tolerant of code fences / stray prose; ambiguous replies
+        fail closed (passed=False) with a note.
+        """
+        data = cls._extract_json(raw)
+        if data is not None:
+            critique = str(data.get("critique") or data.get("reasoning") or "").strip()
+            if "verdict" in data:
+                verdict = str(data["verdict"]).strip().lower()
+                if verdict in {"pass", "fail"}:
+                    return JudgeResult(passed=verdict == "pass", critique=critique)
+            if "pass" in data:
+                try:
+                    return JudgeResult(passed=bool(data["pass"]), critique=critique)
+                except (TypeError, ValueError):
+                    pass
         # Fallback: sniff a clear pass/fail token.
-        lowered = text.lower()
+        lowered = raw.strip().lower()
         if re.search(r"\bpass\b", lowered) and not re.search(r"\bfail\b", lowered):
-            return JudgeResult(passed=True, critique=text[:500])
+            return JudgeResult(passed=True, critique=raw.strip()[:500])
         if re.search(r"\bfail\b", lowered):
-            return JudgeResult(passed=False, critique=text[:500])
+            return JudgeResult(passed=False, critique=raw.strip()[:500])
         return JudgeResult(
-            passed=False, critique=f"Unparseable judge reply (fail-closed): {text[:300]}"
+            passed=False, critique=f"Unparseable judge reply (fail-closed): {raw.strip()[:300]}"
         )
 
     def judge(self, input_text: str, output_text: str, rubric: str) -> JudgeResult:
         raw = self._chat(self._build_messages(input_text, output_text, rubric))
         return self._parse(raw)
+
+    def judge_pairwise(self, input_text: str, output_a: str, output_b: str,
+                       rubric: str) -> dict[str, Any]:
+        """Position-bias-robust pairwise comparison.
+
+        Runs the comparison in BOTH orders (A vs B, then B vs A). Position bias swings pairwise
+        win-rate by ~10-15 points, so we only trust a winner both orders agree on; a
+        disagreement is reported as a position-determined ``tie``. This is the discipline that
+        feeds a trustworthy McNemar decision for v1-vs-v2.
+        """
+        def _compare(first: str, second: str) -> str:
+            user = (
+                f"RUBRIC:\n{rubric}\n\nINPUT:\n{input_text}\n\n"
+                f"OUTPUT A:\n{first}\n\nOUTPUT B:\n{second}\n\nReturn only the JSON object."
+            )
+            raw = self._chat([
+                {"role": "system", "content": _PAIRWISE_SYSTEM},
+                {"role": "user", "content": user},
+            ])
+            data = self._extract_json(raw) or {}
+            return str(data.get("winner", "tie")).strip().upper()[:1]  # "A" | "B" | "T"
+
+        fwd = _compare(output_a, output_b)          # A=a, B=b  -> winner in {A,B}
+        rev = _compare(output_b, output_a)           # A=b, B=a  -> winner in {A,B}
+        # Map both back to the real candidates (a / b / tie).
+        fwd_real = {"A": "a", "B": "b"}.get(fwd, "tie")
+        rev_real = {"A": "b", "B": "a"}.get(rev, "tie")
+        consistent = fwd_real == rev_real and fwd_real != "tie"
+        winner = fwd_real if consistent else "tie"
+        return {"winner": winner, "consistent": consistent, "forward": fwd_real,
+                "reverse": rev_real}
 
     def evaluate(
         self, trace: Trace, rubric: str = "The output correctly answers the input."
