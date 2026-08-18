@@ -29,3 +29,6 @@ anchors.jsonl
 .DS_Store
 .idea/
 .vscode/
+
+# --- Wrangler / Cloudflare ---
+.wrangler/
