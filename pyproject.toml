@@ -3,13 +3,27 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "evalgate"
+name = "evalgate-ci"
 version = "0.1.0"
-description = "Error-analysis-first eval + observability harness for LLM agents, with judge drift detection."
+description = "A CI gate for LLM agents: error-analysis-first evals, a calibrated LLM judge, and judge-drift detection."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Puneeth Kotha" }]
+keywords = ["llm", "evals", "evaluation", "ci", "llm-as-a-judge", "observability",
+    "agents", "opentelemetry", "calibration", "cohens-kappa"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 dependencies = [
     "fastapi",
@@ -38,6 +52,12 @@ evalgate-serve = "evalgate.api:main"
 
 [project.entry-points.pytest11]
 evalgate = "evalgate.pytest_plugin"
+
+[project.urls]
+Homepage = "https://github.com/puneethkotha/evalgate"
+Repository = "https://github.com/puneethkotha/evalgate"
+Demo = "https://evalgate.pages.dev"
+Issues = "https://github.com/puneethkotha/evalgate/issues"
 
 [tool.setuptools.packages.find]
 include = ["evalgate*"]

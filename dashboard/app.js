@@ -106,7 +106,7 @@ function render(data) {
   const g = data.gate, cal = g.calibration, pr = g.pass_rate, d = g.delta;
   const passed = g.passed;
   el("agent").textContent = `live · ${data.agent}`;
-  el("lede").textContent = `CI gate · run #${data.run} · agent = ${data.agent}`;
+  el("lede").textContent = `CI gate · run #${data.run} · ${data.date}`;
 
   // verdict
   const v = el("verdict"); v.hidden = false; v.classList.toggle("fail", !passed);
@@ -153,7 +153,6 @@ function render(data) {
   // timeline
   el("timeline").innerHTML = timeline(data.history, data.min_kappa);
 
-  el("foot-result").textContent = `→ RESULT: ${passed ? "PASS · exit 0" : "FAIL · exit 1"}`;
   document.title = `EvalGate — ${passed ? "PASS" : "FAIL"}`;
 }
 

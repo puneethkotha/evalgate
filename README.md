@@ -84,7 +84,7 @@ flowchart LR
 ## Quickstart
 
 ```bash
-pip install -e ".[dev]"      # or: make install
+pip install evalgate-ci      # the PyPI name; the command + import stay `evalgate`
 evalgate demo                # runs the whole pipeline offline — no key, no data needed
 ```
 
@@ -140,6 +140,45 @@ McNemar test says the change is a significant regression, **or** when the judge'
 | **Pass-rate** | Wilson 95% CI *lower bound* < `min_pass_rate` | A lucky small sample can't sneak past the gate |
 | **Version delta** | McNemar paired test flags a significant regression vs baseline | The two runs are paired (same inputs) — compare correctly |
 | **Judge drift** | Cohen's κ vs the human anchor set < `min_judge_kappa` | A judge that no longer matches humans can't be trusted to grade |
+
+## Usage
+
+Four surfaces — pick the one that fits your stack.
+
+**CLI**
+```bash
+evalgate demo                                   # offline reference run (no key, no data)
+evalgate gate --traces traces.jsonl \           # gate your own agent → exit 0 / 1
+  --anchors anchors.jsonl --min-pass-rate 0.9 --min-kappa 0.7 --badge badge.json
+evalgate analyze  --traces traces.jsonl         # cluster failures into a taxonomy
+evalgate calibrate --anchors anchors.jsonl      # judge-vs-human agreement report
+evalgate report --out dashboard/report.json     # build the dashboard payload
+```
+
+**GitHub Action** — gate every PR (posts a sticky comment, fails the check):
+```yaml
+- uses: puneethkotha/evalgate@main
+  with:
+    traces: traces.jsonl
+    anchors: anchors.jsonl
+    min-pass-rate: "0.9"
+    min-kappa: "0.7"
+```
+
+**pytest** — eval as a unit test:
+```python
+from evalgate.pytest_plugin import assert_gate
+
+def test_agent_quality(agent_passes, calibration):
+    assert_gate(agent_passes, min_pass_rate=0.9, calibration=calibration)
+```
+
+**Library** — compose it yourself: `evalgate.evaluators.LLMJudge`,
+`evalgate.calibration.calibrate_judge`, `evalgate.gate.evaluate_gate`.
+
+Inputs are JSONL of `{"input", "output", "status"}` (or OpenTelemetry GenAI spans via
+`evalgate.otel`). Set `GROQ_API_KEY` (free tier) to use the real LLM judge; without it,
+code-check and status-based gating still run offline.
 
 ## What's inside
 
